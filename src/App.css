@@ -544,6 +544,96 @@ body {
   color: #C62828;
 }
 
+/* Import button */
+.import-btn {
+  width: 100%;
+  padding: 10px 15px;
+  background: linear-gradient(135deg, var(--primary), var(--warning));
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.import-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+/* Map type selector */
+.map-type-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.map-type-btn {
+  padding: 6px 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  background: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #666;
+}
+
+.map-type-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.map-type-btn.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
+}
+
+/* API Key error screen */
+.api-key-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.error-card {
+  background: white;
+  border-radius: 16px;
+  padding: 30px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.error-card h2 {
+  color: var(--dark);
+  margin-bottom: 15px;
+  font-size: 1.3rem;
+}
+
+.error-card p {
+  color: #666;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.error-card code {
+  display: block;
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--primary);
+  word-break: break-all;
+}
+
 /* Custom Leaflet markers */
 .waypoint-marker {
   width: 24px;

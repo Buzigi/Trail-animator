@@ -1,182 +1,41 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Polyline, useMapEvents, useMap } from 'react-leaflet'
-import L from 'leaflet'
+import { GoogleMap, LoadScript, Marker, Polyline } from '@react-google-maps/api'
 import html2canvas from 'html2canvas'
-import 'leaflet/dist/leaflet.css'
 import './App.css'
-
-// Fix Leaflet default marker icon issue
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-})
 
 // Icon SVG paths for different travel modes
 const ICONS = {
   hiker: {
     name: 'Hiker',
     color: '#2E7D32',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32"><path fill="%23COLOR%" d="M13.5,5.5C14.59,5.5 15.5,4.58 15.5,3.5C15.5,2.38 14.59,1.5 13.5,1.5C12.39,1.5 11.5,2.38 11.5,3.5C11.5,4.58 12.39,5.5 13.5,5.5M9.89,19.38L10.89,15L13,17V23H15V15.5L12.89,13.5L13.5,10.5C14.79,12 16.79,13 19,13V11C17.09,11 15.5,10 14.69,8.58L13.69,7C13.29,6.38 12.69,6 12,6C11.69,6 11.5,6.08 11.19,6.19L6,8.28V13H8V9.58L9.79,8.88L8.19,17L3.29,16L2.89,18L9.89,19.38Z M17,4H19V2H17V4M17,8H19V6H17V8M19,16V10H17V12H15V14H17V16H19Z"/></svg>`,
-    profile: 'foot'
+    path: 'M13.5,5.5C14.59,5.5 15.5,4.58 15.5,3.5C15.5,2.38 14.59,1.5 13.5,1.5C12.39,1.5 11.5,2.38 11.5,3.5C11.5,4.58 12.39,5.5 13.5,5.5M9.89,19.38L10.89,15L13,17V23H15V15.5L12.89,13.5L13.5,10.5C14.79,12 16.79,13 19,13V11C17.09,11 15.5,10 14.69,8.58L13.69,7C13.29,6.38 12.69,6 12,6C11.69,6 11.5,6.08 11.19,6.19L6,8.28V13H8V9.58L9.79,8.88L8.19,17L3.29,16L2.89,18L9.89,19.38Z'
   },
   car: {
     name: 'Car',
     color: '#1565C0',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32"><path fill="%23COLOR%" d="M5,11L6.5,6.5H17.5L19,11M17.5,16A1.5,1.5 0 0,1 16,14.5A1.5,1.5 0 0,1 17.5,13A1.5,1.5 0 0,1 19,14.5A1.5,1.5 0 0,1 17.5,16M6.5,16A1.5,1.5 0 0,1 5,14.5A1.5,1.5 0 0,1 6.5,13A1.5,1.5 0 0,1 8,14.5A1.5,1.5 0 0,1 6.5,16M18.92,6C18.72,5.42 18.16,5 17.5,5H6.5C5.84,5 5.28,5.42 5.08,6L3,12V20A1,1 0 0,0 4,21H5A1,1 0 0,0 6,20V19H18V20A1,1 0 0,0 19,21H20A1,1 0 0,0 21,20V12L18.92,6Z"/></svg>`,
-    profile: 'car'
+    path: 'M5,11L6.5,6.5H17.5L19,11M17.5,16A1.5,1.5 0 0,1 16,14.5A1.5,1.5 0 0,1 17.5,13A1.5,1.5 0 0,1 19,14.5A1.5,1.5 0 0,1 17.5,16M6.5,16A1.5,1.5 0 0,1 5,14.5A1.5,1.5 0 0,1 6.5,13A1.5,1.5 0 0,1 8,14.5A1.5,1.5 0 0,1 6.5,16M18.92,6C18.72,5.42 18.16,5 17.5,5H6.5C5.84,5 5.28,5.42 5.08,6L3,12V20A1,1 0 0,0 4,21H5A1,1 0 0,0 6,20V19H18V20A1,1 0 0,0 19,21H20A1,1 0 0,0 21,20V12L18.92,6Z'
   },
   bike: {
     name: 'Bike',
     color: '#F57C00',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32"><path fill="%23COLOR%" d="M5,18A3,3 0 0,1 2,15A3,3 0 0,1 5,12A3,3 0 0,1 8,15A3,3 0 0,1 5,18M5,10A5,5 0 0,0 0,15A5,5 0 0,0 5,20A5,5 0 0,0 10,15A5,5 0 0,0 5,10M14.5,6A1.5,1.5 0 0,1 13,4.5A1.5,1.5 0 0,1 14.5,3A1.5,1.5 0 0,1 16,4.5A1.5,1.5 0 0,1 14.5,6M16,11V8.5L12.5,12H9.5L8.5,14L10,15L12,12H14L18,8V11H16M19,18A3,3 0 0,1 16,15A3,3 0 0,1 19,12A3,3 0 0,1 22,15A3,3 0 0,1 19,18M19,10A5,5 0 0,0 14,15A5,5 0 0,0 19,20A5,5 0 0,0 24,15A5,5 0 0,0 19,10Z"/></svg>`,
-    profile: 'bike'
+    path: 'M5,18A3,3 0 0,1 2,15A3,3 0 0,1 5,12A3,3 0 0,1 8,15A3,3 0 0,1 5,18M5,10A5,5 0 0,0 0,15A5,5 0 0,0 5,20A5,5 0 0,0 10,15A5,5 0 0,0 5,10M14.5,6A1.5,1.5 0 0,1 13,4.5A1.5,1.5 0 0,1 14.5,3A1.5,1.5 0 0,1 16,4.5A1.5,1.5 0 0,1 14.5,6M16,11V8.5L12.5,12H9.5L8.5,14L10,15L12,12H14L18,8V11H16M19,18A3,3 0 0,1 16,15A3,3 0 0,1 19,12A3,3 0 0,1 22,15A3,3 0 0,1 19,18M19,10A5,5 0 0,0 14,15A5,5 0 0,0 19,20A5,5 0 0,0 24,15A5,5 0 0,0 19,10Z'
   },
   runner: {
     name: 'Runner',
     color: '#C62828',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32"><path fill="%23COLOR%" d="M13.5,5.5C14.59,5.5 15.5,4.58 15.5,3.5C15.5,2.38 14.59,1.5 13.5,1.5C12.39,1.5 11.5,2.38 11.5,3.5C11.5,4.58 12.39,5.5 13.5,5.5M9.89,19.38L10.89,15L13,17V23H15V15.5L12.89,13.5L13.5,10.5C14.79,12 16.79,13 19,13V11C17.09,11 15.5,10 14.69,8.58L13.69,7C13.29,6.38 12.69,6 12,6C11.69,6 11.5,6.08 11.19,6.19L6,8.28V13H8V9.58L9.79,8.88L8.19,17L3.29,16L2.89,18L9.89,19.38Z"/></svg>`,
-    profile: 'foot'
+    path: 'M13.5,5.5C14.59,5.5 15.5,4.58 15.5,3.5C15.5,2.38 14.59,1.5 13.5,1.5C12.39,1.5 11.5,2.38 11.5,3.5C11.5,4.58 12.39,5.5 13.5,5.5M9.89,19.38L10.89,15L13,17V23H15V15.5L12.89,13.5L13.5,10.5C14.79,12 16.79,13 19,13V11C17.09,11 15.5,10 14.69,8.58L13.69,7C13.29,6.38 12.69,6 12,6C11.69,6 11.5,6.08 11.19,6.19L6,8.28V13H8V9.58L9.79,8.88L8.19,17L3.29,16L2.89,18L9.89,19.38Z'
   }
 }
 
-// Create custom icon for animated marker
-const createAnimatedIcon = (iconType) => {
-  const icon = ICONS[iconType]
-  const svgString = icon.svg.replace('%23COLOR%', icon.color.replace('#', '%23'))
-
-  return L.divIcon({
-    html: svgString,
-    className: 'animated-marker',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16]
-  })
+const mapContainerStyle = {
+  width: '100%',
+  height: '100%'
 }
 
-// Create waypoint icon
-const createWaypointIcon = (index, total) => {
-  let color = '#FF9800'
-  if (index === 0) color = '#4CAF50'
-  else if (index === total - 1) color = '#F44336'
-
-  return L.divIcon({
-    html: `<div class="waypoint-marker" style="background-color: ${color}">${index + 1}</div>`,
-    className: 'waypoint-icon',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
-  })
-}
-
-// Israel center coordinates
-const israelCenter = [31.5, 35.0]
-
-// Calculate bearing between two points
-const calculateBearing = (lat1, lng1, lat2, lng2) => {
-  const toRad = (deg) => deg * Math.PI / 180
-  const toDeg = (rad) => rad * 180 / Math.PI
-
-  const dLng = toRad(lng2 - lng1)
-  const y = Math.sin(dLng) * Math.cos(toRad(lat2))
-  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng)
-
-  return (toDeg(Math.atan2(y, x)) + 360) % 360
-}
-
-// Smooth easing function
-const easeInOutCubic = (t) => {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
-}
-
-// Map click handler component
-function MapClickHandler({ onMapClick, isPlaying }) {
-  useMapEvents({
-    click: (e) => {
-      if (!isPlaying) {
-        onMapClick(e.latlng)
-      }
-    }
-  })
-  return null
-}
-
-// Cinematic camera controller
-function CinematicCamera({ position, bearing, isPlaying, progress }) {
-  const map = useMap()
-  const lastBearingRef = useRef(0)
-  const targetBearingRef = useRef(0)
-  const animationRef = useRef(null)
-
-  useEffect(() => {
-    if (!position || !isPlaying) return
-
-    // Calculate target zoom based on progress (zoom in at start and end)
-    const baseZoom = 15
-    const zoomVariation = 1.5
-    const progressEffect = Math.sin(progress * Math.PI) // Peak in middle
-    const targetZoom = baseZoom + (progressEffect * zoomVariation * 0.3)
-
-    // Smooth bearing interpolation
-    targetBearingRef.current = bearing
-
-    const animateCamera = () => {
-      const currentBearing = lastBearingRef.current
-      let targetBear = targetBearingRef.current
-
-      // Handle 360-degree wrap-around
-      let diff = targetBear - currentBearing
-      if (diff > 180) diff -= 360
-      if (diff < -180) diff += 360
-
-      // Smooth interpolation
-      const newBearing = currentBearing + diff * 0.08
-      lastBearingRef.current = newBearing
-
-      // Apply camera transformation
-      map.setView([position.lat, position.lng], targetZoom, {
-        animate: true,
-        duration: 0.1,
-        easeLinearity: 0.5
-      })
-
-      // Rotate map (if supported)
-      if (map.setBearing) {
-        map.setBearing(newBearing)
-      }
-
-      animationRef.current = requestAnimationFrame(animateCamera)
-    }
-
-    animationRef.current = requestAnimationFrame(animateCamera)
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
-      }
-    }
-  }, [position, bearing, isPlaying, progress, map])
-
-  return null
-}
-
-// Search result handler
-function SearchResultHandler({ searchResult, onSearchComplete }) {
-  const map = useMap()
-
-  useEffect(() => {
-    if (searchResult) {
-      map.setView([searchResult.lat, searchResult.lng], 15)
-      onSearchComplete()
-    }
-  }, [searchResult, map, onSearchComplete])
-
-  return null
-}
+const defaultCenter = { lat: 32.0853, lng: 34.7818 } // Tel Aviv
 
 function App() {
   const [waypoints, setWaypoints] = useState([])
-  const [routePoints, setRoutePoints] = useState([]) // Actual route from OSRM
   const [selectedIcon, setSelectedIcon] = useState('hiker')
   const [isPlaying, setIsPlaying] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -184,7 +43,6 @@ function App() {
   const [speed, setSpeed] = useState(1)
   const [loop, setLoop] = useState(false)
   const [currentPosition, setCurrentPosition] = useState(null)
-  const [currentBearing, setCurrentBearing] = useState(0)
   const [totalDistance, setTotalDistance] = useState(0)
   const [traveledDistance, setTraveledDistance] = useState(0)
   const [elevationData, setElevationData] = useState([])
@@ -192,18 +50,17 @@ function App() {
   const [elevationLoss, setElevationLoss] = useState(0)
   const [currentElevation, setCurrentElevation] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResult, setSearchResult] = useState(null)
-  const [isSearching, setIsSearching] = useState(false)
-  const [isLoadingRoute, setIsLoadingRoute] = useState(false)
   const [savedRoutes, setSavedRoutes] = useState([])
   const [routeName, setRouteName] = useState('')
+  const [mapInstance, setMapInstance] = useState(null)
+  const [mapType, setMapType] = useState('terrain')
 
   const animationRef = useRef(null)
   const mapRef = useRef(null)
   const lastTimeRef = useRef(null)
+  const fileInputRef = useRef(null)
 
-  // Load saved routes from localStorage on mount
+  // Load saved routes from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('trailAnimatorRoutes')
     if (saved) {
@@ -211,7 +68,7 @@ function App() {
     }
   }, [])
 
-  // Calculate distance between two points using Haversine formula
+  // Calculate distance between two points
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371
     const dLat = (lat2 - lat1) * Math.PI / 180
@@ -223,216 +80,166 @@ function App() {
     return R * c
   }
 
-  // Fetch route from BRouter (hiking) or OSRM (car/bike)
-  const fetchRoute = useCallback(async (points, profile) => {
-    if (points.length < 2) {
-      setRoutePoints([])
+  // Calculate route stats when waypoints change
+  useEffect(() => {
+    if (waypoints.length < 2) {
+      setTotalDistance(0)
+      setElevationData([])
+      setElevationGain(0)
+      setElevationLoss(0)
       return
     }
 
-    setIsLoadingRoute(true)
+    let total = 0
+    const distances = [0]
+
+    for (let i = 1; i < waypoints.length; i++) {
+      const dist = calculateDistance(
+        waypoints[i-1].lat, waypoints[i-1].lng,
+        waypoints[i].lat, waypoints[i].lng
+      )
+      total += dist
+      distances.push(total)
+    }
+
+    setTotalDistance(total)
+
+    // Use elevation from GPX if available, otherwise fetch
+    if (waypoints[0].elevation !== undefined) {
+      const elevPoints = waypoints.map((w, i) => ({
+        distance: distances[i],
+        elevation: w.elevation
+      }))
+      setElevationData(elevPoints)
+
+      // Calculate gain/loss
+      let gain = 0, loss = 0
+      for (let i = 1; i < waypoints.length; i++) {
+        const diff = waypoints[i].elevation - waypoints[i-1].elevation
+        if (diff > 0) gain += diff
+        else loss += Math.abs(diff)
+      }
+      setElevationGain(Math.round(gain))
+      setElevationLoss(Math.round(loss))
+    } else {
+      // Fetch elevation from Google Elevation API
+      fetchElevation(waypoints, distances, total)
+    }
+  }, [waypoints])
+
+  // Fetch elevation data
+  const fetchElevation = async (points, distances, totalDist) => {
+    if (!window.google || !window.google.maps) return
+
+    const elevator = new window.google.maps.ElevationService()
+    const path = points.map(p => ({ lat: p.lat, lng: p.lng }))
 
     try {
-      let coordinates = []
-      let distanceKm = 0
+      const result = await elevator.getElevationAlongPath({
+        path,
+        samples: Math.min(512, points.length)
+      })
 
-      if (profile === 'foot') {
-        // Use BRouter for hiking - it follows marked hiking trails
-        const lonlats = points.map(p => `${p.lng},${p.lat}`).join('|')
+      if (result.results) {
+        const elevPoints = result.results.map((r, i) => ({
+          distance: (i / (result.results.length - 1)) * totalDist,
+          elevation: r.elevation
+        }))
+        setElevationData(elevPoints)
 
-        const response = await fetch(
-          `https://brouter.de/brouter?lonlats=${lonlats}&profile=trekking&alternativeidx=0&format=geojson`
-        )
-
-        const data = await response.json()
-
-        if (data.features && data.features[0]) {
-          const feature = data.features[0]
-          coordinates = feature.geometry.coordinates.map(coord => ({
-            lat: coord[1],
-            lng: coord[0]
-          }))
-
-          // Calculate distance from coordinates
-          for (let i = 1; i < coordinates.length; i++) {
-            distanceKm += calculateDistance(
-              coordinates[i-1].lat, coordinates[i-1].lng,
-              coordinates[i].lat, coordinates[i].lng
-            )
-          }
+        let gain = 0, loss = 0
+        for (let i = 1; i < result.results.length; i++) {
+          const diff = result.results[i].elevation - result.results[i-1].elevation
+          if (diff > 0) gain += diff
+          else loss += Math.abs(diff)
         }
-      } else {
-        // Use OSRM for car/bike
-        const coords = points.map(p => `${p.lng},${p.lat}`).join(';')
-        const osrmProfile = profile === 'car' ? 'driving' : 'cycling'
-
-        const response = await fetch(
-          `https://router.project-osrm.org/route/v1/${osrmProfile}/${coords}?overview=full&geometries=geojson`
-        )
-
-        const data = await response.json()
-
-        if (data.routes && data.routes[0]) {
-          const route = data.routes[0]
-          coordinates = route.geometry.coordinates.map(coord => ({
-            lat: coord[1],
-            lng: coord[0]
-          }))
-          distanceKm = route.distance / 1000
-        }
-      }
-
-      if (coordinates.length > 0) {
-        setRoutePoints(coordinates)
-        setTotalDistance(distanceKm)
-
-        // Fetch real elevation data from Open-Elevation API
-        try {
-          // Sample points along the route (max 100 for API limits)
-          const sampleSize = Math.min(100, coordinates.length)
-          const step = Math.max(1, Math.floor(coordinates.length / sampleSize))
-          const sampledCoords = coordinates.filter((_, i) => i % step === 0)
-
-          const locations = sampledCoords.map(c => ({ latitude: c.lat, longitude: c.lng }))
-
-          const elevResponse = await fetch('https://api.open-elevation.com/api/v1/lookup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ locations })
-          })
-
-          const elevData = await elevResponse.json()
-
-          if (elevData.results) {
-            const elevationPoints = elevData.results.map((r, i) => ({
-              distance: (i / (elevData.results.length - 1)) * distanceKm,
-              elevation: r.elevation
-            }))
-
-            setElevationData(elevationPoints)
-
-            // Calculate elevation gain and loss
-            let gain = 0
-            let loss = 0
-            for (let i = 1; i < elevData.results.length; i++) {
-              const diff = elevData.results[i].elevation - elevData.results[i-1].elevation
-              if (diff > 0) gain += diff
-              else loss += Math.abs(diff)
-            }
-            setElevationGain(Math.round(gain))
-            setElevationLoss(Math.round(loss))
-          }
-        } catch (elevError) {
-          console.error('Elevation fetch failed:', elevError)
-          // Fallback to mock elevation data
-          const mockElevation = coordinates.filter((_, i) => i % Math.max(1, Math.floor(coordinates.length / 50)) === 0)
-            .map((_, i, arr) => ({
-              distance: (i / arr.length) * distanceKm,
-              elevation: 100 + Math.sin(i * 0.3) * 80 + Math.random() * 30
-            }))
-          setElevationData(mockElevation)
-          setElevationGain(0)
-          setElevationLoss(0)
-        }
+        setElevationGain(Math.round(gain))
+        setElevationLoss(Math.round(loss))
       }
     } catch (error) {
-      console.error('Route fetch failed:', error)
-      // Fallback to straight lines
-      setRoutePoints(points)
+      console.error('Elevation fetch failed:', error)
+    }
+  }
 
-      let total = 0
-      for (let i = 1; i < points.length; i++) {
-        total += calculateDistance(
-          points[i-1].lat, points[i-1].lng,
-          points[i].lat, points[i].lng
-        )
+  // Parse GPX file
+  const parseGPX = (gpxString) => {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(gpxString, 'text/xml')
+    const trackPoints = doc.querySelectorAll('trkpt')
+    const routePoints = doc.querySelectorAll('rtept')
+    const points = trackPoints.length > 0 ? trackPoints : routePoints
+
+    const waypts = []
+    points.forEach(pt => {
+      const lat = parseFloat(pt.getAttribute('lat'))
+      const lng = parseFloat(pt.getAttribute('lon'))
+      const eleNode = pt.querySelector('ele')
+      const elevation = eleNode ? parseFloat(eleNode.textContent) : undefined
+
+      waypts.push({ lat, lng, elevation })
+    })
+
+    return waypts
+  }
+
+  // Handle GPX file import
+  const handleFileImport = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const gpxContent = e.target.result
+      const points = parseGPX(gpxContent)
+
+      if (points.length > 0) {
+        setWaypoints(points)
+        setRouteName(file.name.replace('.gpx', ''))
+
+        // Center map on route
+        if (mapInstance && points.length > 0) {
+          const bounds = new window.google.maps.LatLngBounds()
+          points.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }))
+          mapInstance.fitBounds(bounds)
+        }
       }
-      setTotalDistance(total)
-    } finally {
-      setIsLoadingRoute(false)
     }
-  }, [])
+    reader.readAsText(file)
+    event.target.value = ''
+  }
 
-  // Fetch route when waypoints or icon changes
-  useEffect(() => {
-    if (waypoints.length >= 2) {
-      fetchRoute(waypoints, ICONS[selectedIcon].profile)
-    } else {
-      setRoutePoints([])
-      setTotalDistance(0)
-      setElevationData([])
-    }
-  }, [waypoints, selectedIcon, fetchRoute])
-
-  // Handle map click to add waypoints
-  const handleMapClick = useCallback((latlng) => {
+  // Handle map click
+  const handleMapClick = useCallback((event) => {
     if (isPlaying) return
 
     const newWaypoint = {
-      lat: latlng.lat,
-      lng: latlng.lng
+      lat: event.latLng.lat(),
+      lng: event.latLng.lng()
     }
     setWaypoints(prev => [...prev, newWaypoint])
   }, [isPlaying])
 
-  // Handle waypoint click to remove it
+  // Handle waypoint click to remove
   const handleWaypointClick = useCallback((index) => {
     if (isPlaying) return
     setWaypoints(prev => prev.filter((_, i) => i !== index))
   }, [isPlaying])
 
-  // Place search functionality
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return
-
-    setIsSearching(true)
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&countrycodes=il&limit=1`
-      )
-      const data = await response.json()
-
-      if (data && data.length > 0) {
-        setSearchResult({
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon),
-          name: data[0].display_name
-        })
-      } else {
-        alert('Place not found. Try a different search term.')
-      }
-    } catch (error) {
-      console.error('Search failed:', error)
-      alert('Search failed. Please try again.')
-    } finally {
-      setIsSearching(false)
-    }
-  }
-
-  const handleSearchKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleSearch()
-    }
-  }
-
-  // Interpolate position along the route
+  // Interpolate position along path
   const getPositionAtProgress = useCallback((progress) => {
-    const points = routePoints.length > 0 ? routePoints : waypoints
-    if (points.length < 2) return null
+    if (waypoints.length < 2) return null
 
-    // Calculate cumulative distances
     const distances = [0]
     let totalDist = 0
-    for (let i = 1; i < points.length; i++) {
+    for (let i = 1; i < waypoints.length; i++) {
       const dist = calculateDistance(
-        points[i-1].lat, points[i-1].lng,
-        points[i].lat, points[i].lng
+        waypoints[i-1].lat, waypoints[i-1].lng,
+        waypoints[i].lat, waypoints[i].lng
       )
       totalDist += dist
       distances.push(totalDist)
     }
 
-    // Find position at progress
     const targetDist = progress * totalDist
 
     for (let i = 1; i < distances.length; i++) {
@@ -441,21 +248,19 @@ function App() {
         const segmentEnd = distances[i]
         const segmentProgress = (targetDist - segmentStart) / (segmentEnd - segmentStart)
 
-        const start = points[i-1]
-        const end = points[i]
+        const start = waypoints[i-1]
+        const end = waypoints[i]
 
         return {
           lat: start.lat + (end.lat - start.lat) * segmentProgress,
-          lng: start.lng + (end.lng - start.lng) * segmentProgress,
-          nextLat: end.lat,
-          nextLng: end.lng
+          lng: start.lng + (end.lng - start.lng) * segmentProgress
         }
       }
     }
 
-    const last = points[points.length - 1]
-    return { lat: last.lat, lng: last.lng, nextLat: last.lat, nextLng: last.lng }
-  }, [routePoints, waypoints])
+    const last = waypoints[waypoints.length - 1]
+    return { lat: last.lat, lng: last.lng }
+  }, [waypoints])
 
   // Animation loop
   const animate = useCallback((timestamp) => {
@@ -467,7 +272,7 @@ function App() {
     lastTimeRef.current = timestamp
 
     setAnimationProgress(prev => {
-      const increment = (deltaTime / 1000) * speed * 0.02 // Slower for cinematic effect
+      const increment = (deltaTime / 1000) * speed * 0.02
       let newProgress = prev + increment
 
       if (newProgress >= 1) {
@@ -486,23 +291,16 @@ function App() {
     animationRef.current = requestAnimationFrame(animate)
   }, [speed, loop])
 
-  // Update current position, bearing, and elevation based on progress
+  // Update position, elevation, and camera
   useEffect(() => {
     const pos = getPositionAtProgress(animationProgress)
     if (pos) {
       setCurrentPosition(pos)
       setTraveledDistance(totalDistance * animationProgress)
 
-      // Calculate bearing for camera rotation
-      if (pos.nextLat && pos.nextLng) {
-        const bearing = calculateBearing(pos.lat, pos.lng, pos.nextLat, pos.nextLng)
-        setCurrentBearing(bearing)
-      }
-
-      // Calculate current elevation from elevation data
+      // Calculate current elevation
       if (elevationData.length > 1) {
         const currentDist = totalDistance * animationProgress
-        // Find the two elevation points we're between
         for (let i = 1; i < elevationData.length; i++) {
           if (elevationData[i].distance >= currentDist) {
             const prev = elevationData[i - 1]
@@ -514,8 +312,19 @@ function App() {
           }
         }
       }
+
+      // Cinematic camera follow with zoom
+      if (mapInstance && isPlaying) {
+        const zoomBase = 16
+        const zoomEffect = Math.sin(animationProgress * Math.PI) * 1.5
+        const targetZoom = zoomBase - zoomEffect * 0.3
+
+        mapInstance.panTo(pos)
+        mapInstance.setZoom(targetZoom)
+        mapInstance.setTilt(60) // 3D tilt
+      }
     }
-  }, [animationProgress, getPositionAtProgress, totalDistance, elevationData])
+  }, [animationProgress, getPositionAtProgress, totalDistance, elevationData, mapInstance, isPlaying])
 
   // Start/stop animation
   useEffect(() => {
@@ -554,17 +363,18 @@ function App() {
     setIsPaused(false)
     setAnimationProgress(0)
     setCurrentPosition(null)
+    if (mapInstance) {
+      mapInstance.setTilt(0)
+    }
   }
 
   const handleProgressChange = (e) => {
-    const newProgress = parseFloat(e.target.value)
-    setAnimationProgress(newProgress)
+    setAnimationProgress(parseFloat(e.target.value))
   }
 
   const handleClear = () => {
     handleStop()
     setWaypoints([])
-    setRoutePoints([])
     setTotalDistance(0)
     setTraveledDistance(0)
     setElevationData([])
@@ -573,7 +383,7 @@ function App() {
     setRouteName('')
   }
 
-  // Save current route
+  // Save route
   const handleSaveRoute = () => {
     if (waypoints.length < 2) return
 
@@ -596,7 +406,7 @@ function App() {
     alert(`Route "${name}" saved!`)
   }
 
-  // Load a saved route
+  // Load route
   const handleLoadRoute = (route) => {
     handleClear()
     setWaypoints(route.waypoints)
@@ -604,14 +414,14 @@ function App() {
     setRouteName(route.name)
   }
 
-  // Delete a saved route
+  // Delete route
   const handleDeleteRoute = (routeId) => {
     const updatedRoutes = savedRoutes.filter(r => r.id !== routeId)
     setSavedRoutes(updatedRoutes)
     localStorage.setItem('trailAnimatorRoutes', JSON.stringify(updatedRoutes))
   }
 
-  // Export route as JSON file
+  // Export route as JSON
   const handleExportRoute = () => {
     if (waypoints.length < 2) return
 
@@ -635,7 +445,7 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  // Video export functionality
+  // Video export
   const exportVideo = async () => {
     if (waypoints.length < 2) return
 
@@ -643,9 +453,7 @@ function App() {
 
     try {
       const frames = []
-      const fps = 30
-      const duration = 10
-      const totalFrames = fps * duration
+      const totalFrames = 300
 
       for (let i = 0; i <= totalFrames; i++) {
         setAnimationProgress(i / totalFrames)
@@ -663,84 +471,129 @@ function App() {
       link.href = frames[frames.length - 1]
       link.click()
 
-      alert('Animation exported! For full video export, consider using screen recording.')
+      alert('Animation exported! For full video, use screen recording.')
     } catch (error) {
       console.error('Export failed:', error)
-      alert('Export failed. Please try again.')
+      alert('Export failed.')
     } finally {
       setIsExporting(false)
       setAnimationProgress(0)
     }
   }
 
+  const onMapLoad = (map) => {
+    setMapInstance(map)
+  }
+
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+
+  if (!apiKey) {
+    return (
+      <div className="api-key-error">
+        <div className="error-card">
+          <h2>Google Maps API Key Required</h2>
+          <p>Add your API key to <code>.env</code>:</p>
+          <code>VITE_GOOGLE_MAPS_API_KEY=your_key</code>
+          <p style={{ marginTop: '15px', fontSize: '0.85rem' }}>
+            Enable: Maps JavaScript API, Elevation API
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="header">
         <h1>Trail Animator</h1>
-        <p className="subtitle">Create and animate your journey</p>
+        <p className="subtitle">Import GPX or click to create your journey</p>
       </header>
 
       <main className="main-content">
         <div className="map-container" ref={mapRef}>
-          <MapContainer
-            center={israelCenter}
-            zoom={8}
-            style={{ width: '100%', height: '100%' }}
-            zoomControl={true}
-          >
-            <TileLayer
-              url="https://israelhiking.osm.org.il/Hebrew/Tiles/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://israelhiking.osm.org.il">Israel Hiking Map</a>'
-              maxZoom={16}
-            />
+          <LoadScript googleMapsApiKey={apiKey}>
+            <GoogleMap
+              mapContainerStyle={mapContainerStyle}
+              center={defaultCenter}
+              zoom={10}
+              onClick={handleMapClick}
+              onLoad={onMapLoad}
+              mapTypeId={mapType}
+              options={{
+                mapTypeControl: true,
+                mapTypeControlOptions: {
+                  mapTypeIds: ['roadmap', 'satellite', 'terrain', 'hybrid']
+                },
+                streetViewControl: false,
+                fullscreenControl: false,
+                tilt: 0
+              }}
+            >
+              {/* Trail path */}
+              {waypoints.length > 1 && (
+                <Polyline
+                  path={waypoints}
+                  options={{
+                    strokeColor: ICONS[selectedIcon].color,
+                    strokeOpacity: 0.9,
+                    strokeWeight: 4
+                  }}
+                />
+              )}
 
-            <MapClickHandler onMapClick={handleMapClick} isPlaying={isPlaying} />
-            <CinematicCamera
-              position={currentPosition}
-              bearing={currentBearing}
-              isPlaying={isPlaying}
-              progress={animationProgress}
-            />
-            <SearchResultHandler
-              searchResult={searchResult}
-              onSearchComplete={() => setSearchResult(null)}
-            />
+              {/* Start/End markers */}
+              {waypoints.length > 0 && (
+                <>
+                  <Marker
+                    position={waypoints[0]}
+                    label={{ text: 'S', color: 'white', fontWeight: 'bold' }}
+                    icon={{
+                      path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+                      scale: 12,
+                      fillColor: '#4CAF50',
+                      fillOpacity: 1,
+                      strokeColor: 'white',
+                      strokeWeight: 2
+                    }}
+                    onClick={() => handleWaypointClick(0)}
+                  />
+                  {waypoints.length > 1 && (
+                    <Marker
+                      position={waypoints[waypoints.length - 1]}
+                      label={{ text: 'E', color: 'white', fontWeight: 'bold' }}
+                      icon={{
+                        path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+                        scale: 12,
+                        fillColor: '#F44336',
+                        fillOpacity: 1,
+                        strokeColor: 'white',
+                        strokeWeight: 2
+                      }}
+                      onClick={() => handleWaypointClick(waypoints.length - 1)}
+                    />
+                  )}
+                </>
+              )}
 
-            {/* Trail path - use routed path if available */}
-            {(routePoints.length > 1 || waypoints.length > 1) && (
-              <Polyline
-                positions={(routePoints.length > 1 ? routePoints : waypoints).map(w => [w.lat, w.lng])}
-                color={ICONS[selectedIcon].color}
-                weight={4}
-                opacity={0.8}
-              />
-            )}
+              {/* Animated icon */}
+              {currentPosition && (
+                <Marker
+                  position={currentPosition}
+                  icon={{
+                    path: ICONS[selectedIcon].path,
+                    scale: 1.5,
+                    fillColor: ICONS[selectedIcon].color,
+                    fillOpacity: 1,
+                    strokeColor: 'white',
+                    strokeWeight: 1,
+                    anchor: { x: 12, y: 12 }
+                  }}
+                />
+              )}
+            </GoogleMap>
+          </LoadScript>
 
-            {/* Waypoint markers */}
-            {waypoints.map((point, index) => (
-              <Marker
-                key={index}
-                position={[point.lat, point.lng]}
-                icon={createWaypointIcon(index, waypoints.length)}
-                eventHandlers={{
-                  click: (e) => {
-                    e.originalEvent.stopPropagation()
-                    handleWaypointClick(index)
-                  }
-                }}
-              />
-            ))}
-
-            {/* Animated icon */}
-            {currentPosition && (
-              <Marker
-                position={[currentPosition.lat, currentPosition.lng]}
-                icon={createAnimatedIcon(selectedIcon)}
-              />
-            )}
-          </MapContainer>
-
-          {/* Distance overlay */}
+          {/* Stats overlay */}
           <div className="distance-overlay">
             <div className="distance-item">
               <span className="label">Traveled</span>
@@ -768,35 +621,41 @@ function App() {
                 </div>
               </>
             )}
-            {isLoadingRoute && (
-              <div className="distance-item">
-                <span className="label">Route</span>
-                <span className="value loading">Loading...</span>
-              </div>
-            )}
           </div>
         </div>
 
         <div className="controls-panel">
-          {/* Search */}
+          {/* GPX Import */}
           <div className="control-section">
-            <h3>Search Place</h3>
-            <div className="search-container">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={handleSearchKeyPress}
-                placeholder="Search location..."
-                className="search-input"
-              />
-              <button
-                onClick={handleSearch}
-                disabled={isSearching}
-                className="search-btn"
-              >
-                {isSearching ? '...' : 'Go'}
-              </button>
+            <h3>Import GPX</h3>
+            <input
+              type="file"
+              accept=".gpx"
+              onChange={handleFileImport}
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="import-btn"
+            >
+              Choose GPX File
+            </button>
+          </div>
+
+          {/* Map Type */}
+          <div className="control-section">
+            <h3>Map Type</h3>
+            <div className="map-type-selector">
+              {['terrain', 'satellite', 'hybrid', 'roadmap'].map(type => (
+                <button
+                  key={type}
+                  className={`map-type-btn ${mapType === type ? 'active' : ''}`}
+                  onClick={() => setMapType(type)}
+                >
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -812,11 +671,9 @@ function App() {
                   style={{ '--icon-color': icon.color }}
                   title={icon.name}
                 >
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: icon.svg.replace('%23COLOR%', icon.color.replace('#', '%23'))
-                    }}
-                  />
+                  <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path d={icon.path} fill="currentColor" />
+                  </svg>
                 </button>
               ))}
             </div>
@@ -828,7 +685,7 @@ function App() {
             <div className="playback-controls">
               <button
                 onClick={handlePlay}
-                disabled={waypoints.length < 2 || (isPlaying && !isPaused) || isLoadingRoute}
+                disabled={waypoints.length < 2 || (isPlaying && !isPaused)}
                 className="control-btn play"
               >
                 Play
@@ -849,7 +706,6 @@ function App() {
               </button>
             </div>
 
-            {/* Progress slider */}
             <div className="progress-container">
               <input
                 type="range"
@@ -863,7 +719,6 @@ function App() {
               <span className="progress-text">{Math.round(animationProgress * 100)}%</span>
             </div>
 
-            {/* Speed control */}
             <div className="speed-control">
               <label>Speed: {speed}x</label>
               <input
@@ -877,7 +732,6 @@ function App() {
               />
             </div>
 
-            {/* Loop toggle */}
             <label className="loop-toggle">
               <input
                 type="checkbox"
@@ -901,18 +755,13 @@ function App() {
                     </linearGradient>
                   </defs>
                   <path
-                    d={`M 0 80 ${elevationData.map((d, i) =>
-                      `L ${(i / (elevationData.length - 1)) * 300} ${80 - (d.elevation / 200) * 80}`
-                    ).join(' ')} L 300 80 Z`}
+                    d={`M 0 80 ${elevationData.map((d, i) => {
+                      const maxElev = Math.max(...elevationData.map(e => e.elevation))
+                      const minElev = Math.min(...elevationData.map(e => e.elevation))
+                      const range = maxElev - minElev || 1
+                      return `L ${(i / (elevationData.length - 1)) * 300} ${80 - ((d.elevation - minElev) / range) * 70}`
+                    }).join(' ')} L 300 80 Z`}
                     fill="url(#elevGradient)"
-                  />
-                  <path
-                    d={`M ${elevationData.map((d, i) =>
-                      `${(i / (elevationData.length - 1)) * 300} ${80 - (d.elevation / 200) * 80}`
-                    ).join(' L ')}`}
-                    fill="none"
-                    stroke={ICONS[selectedIcon].color}
-                    strokeWidth="2"
                   />
                   <line
                     x1={animationProgress * 300}
@@ -928,7 +777,7 @@ function App() {
             </div>
           )}
 
-          {/* Save/Load Routes */}
+          {/* Save/Load */}
           <div className="control-section">
             <h3>Save Route</h3>
             <div className="save-container">
@@ -967,7 +816,7 @@ function App() {
             )}
           </div>
 
-          {/* Action buttons */}
+          {/* Actions */}
           <div className="control-section actions">
             <button onClick={handleClear} className="action-btn clear">
               Clear
@@ -977,7 +826,7 @@ function App() {
               disabled={waypoints.length < 2}
               className="action-btn"
             >
-              Export JSON
+              JSON
             </button>
             <button
               onClick={exportVideo}
@@ -991,7 +840,7 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>Click on the map to add waypoints (click waypoint to remove), then animate your journey!</p>
+        <p>Import GPX from Garmin or click on map to add points</p>
       </footer>
     </div>
   )
