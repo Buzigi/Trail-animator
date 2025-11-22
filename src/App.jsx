@@ -188,15 +188,27 @@ function App() {
   const [totalDistance, setTotalDistance] = useState(0)
   const [traveledDistance, setTraveledDistance] = useState(0)
   const [elevationData, setElevationData] = useState([])
+  const [elevationGain, setElevationGain] = useState(0)
+  const [elevationLoss, setElevationLoss] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResult, setSearchResult] = useState(null)
   const [isSearching, setIsSearching] = useState(false)
   const [isLoadingRoute, setIsLoadingRoute] = useState(false)
+  const [savedRoutes, setSavedRoutes] = useState([])
+  const [routeName, setRouteName] = useState('')
 
   const animationRef = useRef(null)
   const mapRef = useRef(null)
   const lastTimeRef = useRef(null)
+
+  // Load saved routes from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('trailAnimatorRoutes')
+    if (saved) {
+      setSavedRoutes(JSON.parse(saved))
+    }
+  }, [])
 
   // Calculate distance between two points using Haversine formula
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -273,13 +285,54 @@ function App() {
         setRoutePoints(coordinates)
         setTotalDistance(distanceKm)
 
-        // Generate elevation data based on route points
-        const mockElevation = coordinates.filter((_, i) => i % Math.max(1, Math.floor(coordinates.length / 50)) === 0)
-          .map((_, i, arr) => ({
-            distance: (i / arr.length) * distanceKm,
-            elevation: 100 + Math.sin(i * 0.3) * 80 + Math.random() * 30
-          }))
-        setElevationData(mockElevation)
+        // Fetch real elevation data from Open-Elevation API
+        try {
+          // Sample points along the route (max 100 for API limits)
+          const sampleSize = Math.min(100, coordinates.length)
+          const step = Math.max(1, Math.floor(coordinates.length / sampleSize))
+          const sampledCoords = coordinates.filter((_, i) => i % step === 0)
+
+          const locations = sampledCoords.map(c => ({ latitude: c.lat, longitude: c.lng }))
+
+          const elevResponse = await fetch('https://api.open-elevation.com/api/v1/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ locations })
+          })
+
+          const elevData = await elevResponse.json()
+
+          if (elevData.results) {
+            const elevationPoints = elevData.results.map((r, i) => ({
+              distance: (i / (elevData.results.length - 1)) * distanceKm,
+              elevation: r.elevation
+            }))
+
+            setElevationData(elevationPoints)
+
+            // Calculate elevation gain and loss
+            let gain = 0
+            let loss = 0
+            for (let i = 1; i < elevData.results.length; i++) {
+              const diff = elevData.results[i].elevation - elevData.results[i-1].elevation
+              if (diff > 0) gain += diff
+              else loss += Math.abs(diff)
+            }
+            setElevationGain(Math.round(gain))
+            setElevationLoss(Math.round(loss))
+          }
+        } catch (elevError) {
+          console.error('Elevation fetch failed:', elevError)
+          // Fallback to mock elevation data
+          const mockElevation = coordinates.filter((_, i) => i % Math.max(1, Math.floor(coordinates.length / 50)) === 0)
+            .map((_, i, arr) => ({
+              distance: (i / arr.length) * distanceKm,
+              elevation: 100 + Math.sin(i * 0.3) * 80 + Math.random() * 30
+            }))
+          setElevationData(mockElevation)
+          setElevationGain(0)
+          setElevationLoss(0)
+        }
       }
     } catch (error) {
       console.error('Route fetch failed:', error)
@@ -498,6 +551,71 @@ function App() {
     setTotalDistance(0)
     setTraveledDistance(0)
     setElevationData([])
+    setElevationGain(0)
+    setElevationLoss(0)
+    setRouteName('')
+  }
+
+  // Save current route
+  const handleSaveRoute = () => {
+    if (waypoints.length < 2) return
+
+    const name = routeName.trim() || `Route ${new Date().toLocaleDateString()}`
+    const newRoute = {
+      id: Date.now(),
+      name,
+      waypoints,
+      icon: selectedIcon,
+      distance: totalDistance,
+      elevationGain,
+      elevationLoss,
+      createdAt: new Date().toISOString()
+    }
+
+    const updatedRoutes = [...savedRoutes, newRoute]
+    setSavedRoutes(updatedRoutes)
+    localStorage.setItem('trailAnimatorRoutes', JSON.stringify(updatedRoutes))
+    setRouteName('')
+    alert(`Route "${name}" saved!`)
+  }
+
+  // Load a saved route
+  const handleLoadRoute = (route) => {
+    handleClear()
+    setWaypoints(route.waypoints)
+    setSelectedIcon(route.icon)
+    setRouteName(route.name)
+  }
+
+  // Delete a saved route
+  const handleDeleteRoute = (routeId) => {
+    const updatedRoutes = savedRoutes.filter(r => r.id !== routeId)
+    setSavedRoutes(updatedRoutes)
+    localStorage.setItem('trailAnimatorRoutes', JSON.stringify(updatedRoutes))
+  }
+
+  // Export route as JSON file
+  const handleExportRoute = () => {
+    if (waypoints.length < 2) return
+
+    const routeData = {
+      name: routeName || 'Unnamed Route',
+      waypoints,
+      icon: selectedIcon,
+      distance: totalDistance,
+      elevationGain,
+      elevationLoss,
+      elevationData,
+      createdAt: new Date().toISOString()
+    }
+
+    const blob = new Blob([JSON.stringify(routeData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${routeName || 'route'}.json`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   // Video export functionality
@@ -615,6 +733,18 @@ function App() {
               <span className="label">Total</span>
               <span className="value">{totalDistance.toFixed(2)} km</span>
             </div>
+            {elevationGain > 0 && (
+              <>
+                <div className="distance-item elevation-stat">
+                  <span className="label">Gain</span>
+                  <span className="value gain">+{elevationGain}m</span>
+                </div>
+                <div className="distance-item elevation-stat">
+                  <span className="label">Loss</span>
+                  <span className="value loss">-{elevationLoss}m</span>
+                </div>
+              </>
+            )}
             {isLoadingRoute && (
               <div className="distance-item">
                 <span className="label">Route</span>
@@ -775,17 +905,63 @@ function App() {
             </div>
           )}
 
+          {/* Save/Load Routes */}
+          <div className="control-section">
+            <h3>Save Route</h3>
+            <div className="save-container">
+              <input
+                type="text"
+                value={routeName}
+                onChange={(e) => setRouteName(e.target.value)}
+                placeholder="Route name..."
+                className="route-name-input"
+              />
+              <button
+                onClick={handleSaveRoute}
+                disabled={waypoints.length < 2}
+                className="save-btn"
+              >
+                Save
+              </button>
+            </div>
+            {savedRoutes.length > 0 && (
+              <div className="saved-routes">
+                {savedRoutes.map(route => (
+                  <div key={route.id} className="saved-route-item">
+                    <span className="route-info" onClick={() => handleLoadRoute(route)}>
+                      {route.name}
+                      <small>{route.distance.toFixed(1)}km</small>
+                    </span>
+                    <button
+                      className="delete-route-btn"
+                      onClick={() => handleDeleteRoute(route.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Action buttons */}
           <div className="control-section actions">
             <button onClick={handleClear} className="action-btn clear">
-              Clear Route
+              Clear
+            </button>
+            <button
+              onClick={handleExportRoute}
+              disabled={waypoints.length < 2}
+              className="action-btn"
+            >
+              Export JSON
             </button>
             <button
               onClick={exportVideo}
               disabled={waypoints.length < 2 || isExporting}
               className="action-btn export"
             >
-              {isExporting ? 'Exporting...' : 'Export Video'}
+              {isExporting ? '...' : 'Video'}
             </button>
           </div>
         </div>
