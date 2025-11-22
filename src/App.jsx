@@ -210,7 +210,7 @@ function App() {
     return R * c
   }
 
-  // Fetch route from OSRM
+  // Fetch route from BRouter (hiking) or OSRM (car/bike)
   const fetchRoute = useCallback(async (points, profile) => {
     if (points.length < 2) {
       setRoutePoints([])
@@ -220,33 +220,63 @@ function App() {
     setIsLoadingRoute(true)
 
     try {
-      // Build coordinates string for OSRM
-      const coords = points.map(p => `${p.lng},${p.lat}`).join(';')
+      let coordinates = []
+      let distanceKm = 0
 
-      // Use OSRM demo server (for production, use your own server)
-      const osrmProfile = profile === 'car' ? 'driving' :
-                         profile === 'bike' ? 'cycling' : 'walking'
+      if (profile === 'foot') {
+        // Use BRouter for hiking - it follows marked hiking trails
+        const lonlats = points.map(p => `${p.lng},${p.lat}`).join('|')
 
-      const response = await fetch(
-        `https://router.project-osrm.org/route/v1/${osrmProfile}/${coords}?overview=full&geometries=geojson`
-      )
+        const response = await fetch(
+          `https://brouter.de/brouter?lonlats=${lonlats}&profile=trekking&alternativeidx=0&format=geojson`
+        )
 
-      const data = await response.json()
+        const data = await response.json()
 
-      if (data.routes && data.routes[0]) {
-        const route = data.routes[0]
-        const coordinates = route.geometry.coordinates.map(coord => ({
-          lat: coord[1],
-          lng: coord[0]
-        }))
+        if (data.features && data.features[0]) {
+          const feature = data.features[0]
+          coordinates = feature.geometry.coordinates.map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+          }))
 
+          // Calculate distance from coordinates
+          for (let i = 1; i < coordinates.length; i++) {
+            distanceKm += calculateDistance(
+              coordinates[i-1].lat, coordinates[i-1].lng,
+              coordinates[i].lat, coordinates[i].lng
+            )
+          }
+        }
+      } else {
+        // Use OSRM for car/bike
+        const coords = points.map(p => `${p.lng},${p.lat}`).join(';')
+        const osrmProfile = profile === 'car' ? 'driving' : 'cycling'
+
+        const response = await fetch(
+          `https://router.project-osrm.org/route/v1/${osrmProfile}/${coords}?overview=full&geometries=geojson`
+        )
+
+        const data = await response.json()
+
+        if (data.routes && data.routes[0]) {
+          const route = data.routes[0]
+          coordinates = route.geometry.coordinates.map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+          }))
+          distanceKm = route.distance / 1000
+        }
+      }
+
+      if (coordinates.length > 0) {
         setRoutePoints(coordinates)
-        setTotalDistance(route.distance / 1000) // Convert to km
+        setTotalDistance(distanceKm)
 
         // Generate elevation data based on route points
         const mockElevation = coordinates.filter((_, i) => i % Math.max(1, Math.floor(coordinates.length / 50)) === 0)
           .map((_, i, arr) => ({
-            distance: (i / arr.length) * (route.distance / 1000),
+            distance: (i / arr.length) * distanceKm,
             elevation: 100 + Math.sin(i * 0.3) * 80 + Math.random() * 30
           }))
         setElevationData(mockElevation)
