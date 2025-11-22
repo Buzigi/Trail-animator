@@ -18,7 +18,7 @@ const ICONS = {
   hiker: {
     name: 'Hiker',
     color: '#2E7D32',
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32"><path fill="%23COLOR%" d="M12 2C13.1 2 14 2.9 14 4S13.1 6 12 6 10 5.1 10 4 10.9 2 12 2M21 9H15V22H13V16H11V22H9V9H3V7H21V9Z"/></svg>`,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32"><path fill="%23COLOR%" d="M13.5,5.5C14.59,5.5 15.5,4.58 15.5,3.5C15.5,2.38 14.59,1.5 13.5,1.5C12.39,1.5 11.5,2.38 11.5,3.5C11.5,4.58 12.39,5.5 13.5,5.5M9.89,19.38L10.89,15L13,17V23H15V15.5L12.89,13.5L13.5,10.5C14.79,12 16.79,13 19,13V11C17.09,11 15.5,10 14.69,8.58L13.69,7C13.29,6.38 12.69,6 12,6C11.69,6 11.5,6.08 11.19,6.19L6,8.28V13H8V9.58L9.79,8.88L8.19,17L3.29,16L2.89,18L9.89,19.38Z M17,4H19V2H17V4M17,8H19V6H17V8M19,16V10H17V12H15V14H17V16H19Z"/></svg>`,
     profile: 'foot'
   },
   car: {
@@ -190,6 +190,7 @@ function App() {
   const [elevationData, setElevationData] = useState([])
   const [elevationGain, setElevationGain] = useState(0)
   const [elevationLoss, setElevationLoss] = useState(0)
+  const [currentElevation, setCurrentElevation] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResult, setSearchResult] = useState(null)
@@ -485,7 +486,7 @@ function App() {
     animationRef.current = requestAnimationFrame(animate)
   }, [speed, loop])
 
-  // Update current position and bearing based on progress
+  // Update current position, bearing, and elevation based on progress
   useEffect(() => {
     const pos = getPositionAtProgress(animationProgress)
     if (pos) {
@@ -497,8 +498,24 @@ function App() {
         const bearing = calculateBearing(pos.lat, pos.lng, pos.nextLat, pos.nextLng)
         setCurrentBearing(bearing)
       }
+
+      // Calculate current elevation from elevation data
+      if (elevationData.length > 1) {
+        const currentDist = totalDistance * animationProgress
+        // Find the two elevation points we're between
+        for (let i = 1; i < elevationData.length; i++) {
+          if (elevationData[i].distance >= currentDist) {
+            const prev = elevationData[i - 1]
+            const next = elevationData[i]
+            const segmentProgress = (currentDist - prev.distance) / (next.distance - prev.distance)
+            const elev = prev.elevation + (next.elevation - prev.elevation) * segmentProgress
+            setCurrentElevation(Math.round(elev))
+            break
+          }
+        }
+      }
     }
-  }, [animationProgress, getPositionAtProgress, totalDistance])
+  }, [animationProgress, getPositionAtProgress, totalDistance, elevationData])
 
   // Start/stop animation
   useEffect(() => {
@@ -733,6 +750,12 @@ function App() {
               <span className="label">Total</span>
               <span className="value">{totalDistance.toFixed(2)} km</span>
             </div>
+            {currentElevation > 0 && (
+              <div className="distance-item elevation-stat">
+                <span className="label">Elevation</span>
+                <span className="value current-elev">{currentElevation}m</span>
+              </div>
+            )}
             {elevationGain > 0 && (
               <>
                 <div className="distance-item elevation-stat">
