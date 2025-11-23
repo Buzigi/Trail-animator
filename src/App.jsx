@@ -54,6 +54,7 @@ function App() {
   const [routeName, setRouteName] = useState('')
   const [mapInstance, setMapInstance] = useState(null)
   const [mapType, setMapType] = useState('terrain')
+  const [traveledPath, setTraveledPath] = useState([])
 
   const animationRef = useRef(null)
   const mapRef = useRef(null)
@@ -251,15 +252,23 @@ function App() {
         const start = waypoints[i-1]
         const end = waypoints[i]
 
-        return {
+        const position = {
           lat: start.lat + (end.lat - start.lat) * segmentProgress,
           lng: start.lng + (end.lng - start.lng) * segmentProgress
+        }
+
+        return {
+          position,
+          segmentIndex: i - 1
         }
       }
     }
 
     const last = waypoints[waypoints.length - 1]
-    return { lat: last.lat, lng: last.lng }
+    return {
+      position: { lat: last.lat, lng: last.lng },
+      segmentIndex: waypoints.length - 1
+    }
   }, [waypoints])
 
   // Animation loop
@@ -293,10 +302,16 @@ function App() {
 
   // Update position, elevation, and camera
   useEffect(() => {
-    const pos = getPositionAtProgress(animationProgress)
-    if (pos) {
+    const result = getPositionAtProgress(animationProgress)
+    if (result) {
+      const { position: pos, segmentIndex } = result
       setCurrentPosition(pos)
       setTraveledDistance(totalDistance * animationProgress)
+
+      // Calculate traveled path - all points up to current segment + current position
+      const traveled = waypoints.slice(0, segmentIndex + 1).map(w => ({ lat: w.lat, lng: w.lng }))
+      traveled.push(pos)
+      setTraveledPath(traveled)
 
       // Calculate current elevation
       if (elevationData.length > 1) {
@@ -324,7 +339,7 @@ function App() {
         mapInstance.setTilt(60) // 3D tilt
       }
     }
-  }, [animationProgress, getPositionAtProgress, totalDistance, elevationData, mapInstance, isPlaying])
+  }, [animationProgress, getPositionAtProgress, totalDistance, elevationData, mapInstance, isPlaying, waypoints])
 
   // Start/stop animation
   useEffect(() => {
@@ -363,6 +378,7 @@ function App() {
     setIsPaused(false)
     setAnimationProgress(0)
     setCurrentPosition(null)
+    setTraveledPath([])
     if (mapInstance) {
       mapInstance.setTilt(0)
     }
@@ -529,16 +545,30 @@ function App() {
                 tilt: 0
               }}
             >
-              {/* Trail path */}
+              {/* Trail path - shows progressively during animation */}
               {waypoints.length > 1 && (
-                <Polyline
-                  path={waypoints}
-                  options={{
-                    strokeColor: ICONS[selectedIcon].color,
-                    strokeOpacity: 0.9,
-                    strokeWeight: 4
-                  }}
-                />
+                <>
+                  {/* Faint full path preview */}
+                  {(isPlaying || animationProgress > 0) && (
+                    <Polyline
+                      path={waypoints}
+                      options={{
+                        strokeColor: ICONS[selectedIcon].color,
+                        strokeOpacity: 0.2,
+                        strokeWeight: 3
+                      }}
+                    />
+                  )}
+                  {/* Main path - progressive during animation, full when stopped */}
+                  <Polyline
+                    path={(isPlaying || animationProgress > 0) && traveledPath.length > 0 ? traveledPath : waypoints}
+                    options={{
+                      strokeColor: ICONS[selectedIcon].color,
+                      strokeOpacity: 0.9,
+                      strokeWeight: 4
+                    }}
+                  />
+                </>
               )}
 
               {/* Start/End markers */}
